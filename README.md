@@ -1,4 +1,4 @@
-## Hecho por Eva Alcaide Díaz y Guillermo Garrido Garrido Ferrer ##
+## Hecho por Eva Alcaide Díaz y Guillermo Garrido Ferrer ##
 
 ## IMPLEMENTACIÓN EN PYTHON DE MÉTODOS EM Y OSEM PARA RECONSTRUCCIÓN DE IMAGEN PET ##
 
