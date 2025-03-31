@@ -1,3 +1,5 @@
+## Hecho por Eva Alcaide Díaz y Guillermo Garrido Garrido Ferrer ##
+
 ## IMPLEMENTACIÓN EN PYTHON DE MÉTODOS EM Y OSEM PARA RECONSTRUCCIÓN DE IMAGEN PET ##
 
 El archivo pet_data_for_python.mat se genera ejecutando el script generate_data.m en MATLAB, aunque lo incluimos aquí para que no sea necesario hacer este paso previo. De forma similar, incluimos los gráficos que se generaron en la última ejecución del código en la carpeta plots, aunque se puede ejecutar main.py para volverlos a generar.
