@@ -1,0 +1,89 @@
+% --- Script MATLAB para generar datos ---
+clear; clc; close all;
+
+%% 1. Parámetros
+nx = 128; % Tamaño de imagen (más pequeño para pruebas rápidas, más allá de 256 tarda muchísimo)
+ny = nx;
+nphi = round(nx * 1.5); % Número de ángulos. El x1.5 es porque 
+if mod(nphi,2) ~= 0, nphi = nphi+1; end % Asegurar paridad si es necesario
+
+%% 2. Generar Phantom
+x_true = double(phantom(nx)); % Crea la imagen de prueba phantom, de dimensiones nx*nx
+x_true(x_true < 0) = 0; % Asegurarse de que no hay píxeles con valores negativos
+
+%% 3. Generar/Cargar Matriz de Sistema
+disp('Generando/Cargando Matriz de Sistema A...');
+sm_filename = sprintf('SystemMatrix_%dx%d_%dangles.mat', nx, ny, nphi); % Crear archivo para guardar resultados, con un nombre que contiene los valores de los parámetros
+if exist(sm_filename, 'file')
+    load(sm_filename, 'A', 'nphi', 'ns', 'nx', 'ny'); % Si ya existe el archivo, extrae el valor de los parámetros de éste
+    disp('Matriz cargada.');
+else
+    [A, ns, ~] = GenerateSystemMatrix(nphi, nx); % Usa la función del enunciado para generar A, siendo ns el número de bins
+    save(sm_filename, 'A', 'nphi', 'ns', 'nx', 'ny', '-v7.3'); % El 7.3 es para guardar el archivo, pese a que puede llegar a ocupar mucho
+    disp('Matriz generada y guardada.');
+end
+
+%% 4. Simular Sinograma y añadir Ruido Poisson
+disp('Simulando sinograma y ruido...');
+num_events = 5e5; % Número de eventos objetivo. Cuanto mayor sea el valor, menos ruido (diapositiva 13 de reconstrucción)
+x_vec = x_true(:); % Convierte la imagen en un vector columna
+y_ideal_vec = A * x_vec; % Dimensiones de A: nphi*ns x nx*ny, dimensiones de x_vec: nx*ny x 1. Representa la y ideal, porque no hay ruido (b)
+% Escalar para simular cuentas. Es para que se esperen num_events, al
+% margen de las características de la foto de entrada
+scale_factor = num_events / sum(y_ideal_vec); 
+lambda = y_ideal_vec * scale_factor; % Tasa esperada de eventos en cada bin del sinograma, para que el total sea total_counts_simulated
+y_noisy_vec = poissrnd(lambda);
+
+y_noisy_sino = reshape(y_noisy_vec, nphi, ns); % Lo reformatea en imagen, nphi x ns
+
+%% 5. Ejecutar Reconstrucciones MATLAB (Referencia)
+disp('Ejecutando reconstrucciones MATLAB...');
+em_iterations = 30;
+osem_iterations = 3; % Iteraciones completas
+osem_subsets = 12;
+
+% Importante que nphi sea divisible por osem_subsets
+if mod(nphi, osem_subsets) ~= 0
+    error('El número de ángulos (nphi) debe ser divisible por el número de subsets.');
+end
+
+addpath(genpath('Codigo_Practica_ReconstruccionPET')); % Añade las carpetas de funciones
+
+initial_image_mat = ones(nx, ny);
+initial_image_mat = initial_image_mat ./ sum(initial_image_mat(:)) * sum(y_noisy_vec); % Normalización inicial coherente
+fprintf('Ejecutando MATLAB EM (%d iteraciones)... ', em_iterations);
+tic; % Inicia cronómetro para EM
+[images_em_matlab, ~] = Reconstruction_EM(A, reshape(y_noisy_vec, nphi, ns), em_iterations);
+time_em_matlab = toc; % Detiene cronómetro y obtiene el tiempo
+fprintf('Terminado en %.3f segundos.\n', time_em_matlab); % Muestra el tiempo
+x_em_matlab = images_em_matlab{end}; % Se queda con la última iteración
+
+% Nota: Reconstruction_OSEM puede devolver más iteraciones si está mal indexado
+% Usaremos Reconstruction_Iterative que maneja mejor los subsets
+osem_total_subiterations = osem_iterations * osem_subsets;
+[images_osem_matlab, ~] = Reconstruction_OSEM(A, reshape(y_noisy_vec, nphi, ns), osem_iterations, osem_subsets);
+ if length(images_osem_matlab) >= osem_total_subiterations
+     x_osem_matlab = images_osem_matlab{osem_total_subiterations}; % Última subiteración de la última iteración
+ else
+     warning('Número inesperado de imágenes. Usando la última disponible.');
+     x_osem_matlab = images_osem_matlab{end};
+ end
+
+
+%% 6. Guardar todo para Python
+disp('Guardando datos para Python...');
+output_filename = 'pet_data_for_python.mat';
+save(output_filename, 'A', 'x_true', 'y_noisy_vec', 'y_noisy_sino', ...
+     'nx', 'ny', 'nphi', 'ns', ...
+     'x_em_matlab', 'x_osem_matlab', ...
+     'em_iterations', 'osem_iterations', 'osem_subsets');
+
+disp(['Datos guardados en ', output_filename]);
+
+% Visualización
+figure;
+subplot(2,3,1); imshow(x_true, []); title('Phantom Original'); colorbar;
+subplot(2,3,2); imshow(y_noisy_sino, []); title('Sinograma Ruidoso'); colorbar;
+subplot(2,3,4); imshow(x_em_matlab, []); title(['MATLAB EM (', num2str(em_iterations), ' iter)']); colorbar;
+subplot(2,3,5); imshow(x_osem_matlab, []); title(['MATLAB OSEM (', num2str(osem_iterations), 'x', num2str(osem_subsets), ' subiter)']); colorbar;
+drawnow;
